@@ -1,0 +1,108 @@
+[build-system]
+requires = ["maturin>=1.9,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "fastapi-radixer"
+requires-python = ">=3.12"
+classifiers = [
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: Implementation :: PyPy",
+]
+dynamic = ["version"]
+dependencies = [
+    "fastapi>=0.116.1",
+    "pytest-cov>=6.2.1",
+]
+
+[tool.maturin]
+python-source = "python"
+module-name = "fastapi_radixer._fastapi_radixer"
+bindings = "pyo3"
+features = ["pyo3/extension-module"]
+
+[tool.uv]
+package = false
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "pre-commit>=4.3.0",
+    "pytest>=8.4.1",
+    "pytest-asyncio>=1.1.0",
+    "pytest-benchmark>=5.1.0",
+    "rich>=14.1.0",
+    "ruff>=0.12.10",
+    "ty>=0.0.1a19",
+    "typer>=0.16.1",
+    "uvicorn>=0.35.0",
+    "uvloop>=0.21.0",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "ALL", # select all checks by default
+]
+ignore = [
+    # single rule exclude
+    "TC006", # ignore wrapping cast argument in quotes
+    "TC002", # move imports to if TYPE_CHECKING block
+    "COM812", # will be handled by ruff format
+    "TRY003", # allow long exc message
+    "EM101", # allow str in exc message
+    "ANN401", # allow to have Any in *args, **kwargs
+
+    # full rule excludes
+    "D", # ignore docstring related rules
+]
+exclude = [
+    ".bzr",
+    ".direnv",
+    ".eggs",
+    ".git",
+    ".hg",
+    ".mypy_cache",
+    ".nox",
+    ".pants.d",
+    ".ruff_cache",
+    ".svn",
+    ".tox",
+    ".venv",
+    "__pypackages__",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "node_modules",
+    "venv",
+    ".venv",
+]
+per-file-ignores = { }
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.coverage.paths]
+source = ["python/fastapi_radixer"]
+
+[tool.coverage.run]
+source = ["python/fastapi_radixer"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "@abstractmethod",
+    "@overload",
+    "if TYPE_CHECKING:",
+]
+
+[tool.pytest.ini_options]
+asyncio_default_fixture_loop_scope = "session"
+addopts = [
+]
