@@ -1,6 +1,6 @@
 use pyo3::prelude::*;
 use pyo3::{FromPyObject, IntoPyObject, PyAny, PyObject};
-use std::collections::HashSet;
+use rustc_hash::FxHashSet;
 use std::fmt::Display;
 
 macro_rules! impl_string_key_from_pyobject {
@@ -21,7 +21,7 @@ macro_rules! impl_string_key_from_pyobject {
     };
 }
 
-pub type Methods = HashSet<String>;
+pub type Methods = FxHashSet<String>;
 
 #[derive(Clone, Debug)]
 pub enum ParamParseResult {

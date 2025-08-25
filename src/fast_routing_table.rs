@@ -1,6 +1,7 @@
 use crate::types::{Methods, ParamParseResult, ParamRouteDecl, ParamType, PathPart, RouteDecl, StaticRouteDecl};
 use pyo3::{pyclass, pymethods, PyObject, PyResult, Python, exceptions::PyRuntimeError};
-use std::collections::{BTreeMap, HashMap, HashSet};
+use rustc_hash::{FxHashMap, FxHashSet};
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use pyo3::types::PyString;
 
@@ -8,7 +9,7 @@ struct RoutingTrie {
     methods: Methods,
     leafs: Vec<ParamRouteDecl>,
 
-    static_parts: HashMap<String, RoutingTrie>,
+    static_parts: FxHashMap<String, RoutingTrie>,
     param_parts: BTreeMap<ParamType, RoutingTrie>,
 
     radix_node: Option<(String, Box<RoutingTrie>)>,
@@ -17,9 +18,9 @@ struct RoutingTrie {
 impl RoutingTrie {
     fn new() -> Self {
         RoutingTrie {
-            methods: HashSet::with_capacity(4), // Common: GET, POST, PUT, DELETE
+            methods: FxHashSet::with_capacity_and_hasher(4, Default::default()), // Common: GET, POST, PUT, DELETE
             leafs: Vec::new(),
-            static_parts: HashMap::with_capacity(2), // Most nodes have 1-2 children
+            static_parts: FxHashMap::with_capacity_and_hasher(2, Default::default()), // Most nodes have 1-2 children
             param_parts: BTreeMap::new(),
             radix_node: None,
         }
@@ -176,7 +177,7 @@ impl RoutingTrie {
 #[pyclass]
 pub struct FastRoutingTable {
     trie: RoutingTrie,
-    static_routes: HashMap<(String, String), Arc<StaticRouteDecl>>,
+    static_routes: FxHashMap<(String, String), Arc<StaticRouteDecl>>,
     prepared: bool,
 }
 
@@ -202,7 +203,7 @@ impl FastRoutingTable {
     pub fn new() -> Self {
         FastRoutingTable {
             trie: RoutingTrie::new(),
-            static_routes: HashMap::with_capacity(16), // Pre-allocate for common static routes
+            static_routes: FxHashMap::with_capacity_and_hasher(16, Default::default()), // Pre-allocate for common static routes
             prepared: false,
         }
     }
@@ -232,14 +233,14 @@ impl FastRoutingTable {
         &self,
         method: &str,
         path: &str,
-    ) -> PyResult<Option<(&PyObject, HashMap<&str, ParamParseResult>)>> {
+    ) -> PyResult<Option<(&PyObject, FxHashMap<&str, ParamParseResult>)>> {
         let key = (path.to_string(), method.to_string());
         if let Some(route) = self.static_routes.get(&key) {
-            return Ok(Some((&route.route, HashMap::new())));
+            return Ok(Some((&route.route, FxHashMap::default())));
         }
 
         if let Some((decl, args)) = self.trie.lookup(method, path) {
-            let params: HashMap<&str, ParamParseResult> = match args {
+            let params: FxHashMap<&str, ParamParseResult> = match args {
                 Some(args) => {
                     decl.params
                         .iter()
@@ -247,7 +248,7 @@ impl FastRoutingTable {
                         .zip(args.into_iter())
                         .collect()
                 },
-                None => HashMap::new(),
+                None => FxHashMap::default(),
             };
 
             return Ok(Some((&decl.route, params)));
@@ -258,7 +259,7 @@ impl FastRoutingTable {
 
     pub fn dump(&self, tree: PyObject) -> PyResult<()> {
         Python::with_gil(|py| -> PyResult<()> {
-            let mut seen_paths = HashSet::new();
+            let mut seen_paths = FxHashSet::default();
             for ((path, _), _) in &self.static_routes {
                 if seen_paths.insert(path) {
                     tree.call_method1(py, "add", (PyString::new(py, path),))?;
