@@ -5,6 +5,8 @@ from typing import Iterator, Callable, Any, Awaitable
 from fastapi import APIRouter
 from starlette.types import ASGIApp, Message
 
+from fastapi_radixer._base import RadixerRoutingTable
+
 routes: list[tuple[str, str, str]] = []
 
 
@@ -45,6 +47,15 @@ def is_success_msg(msg: Message) -> bool:
             return False
 
 
+async def _async_wrapper(func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
+    return func(*args, **kwargs)
+
+
+async def _run_lookup_case(method: str, path: str, app: RadixerRoutingTable, benchmark: Any) -> None:
+    route = await benchmark(_async_wrapper, app.lookup, method, path.strip("/"))
+    assert route is not None, f"{method}:{path} - {route}"
+
+
 async def _run_case(method: str, path: str, app: ASGIApp, benchmark: Any) -> None:
     messages = []
 
@@ -76,11 +87,17 @@ async def _run_case(method: str, path: str, app: ASGIApp, benchmark: Any) -> Non
 
 async def run_cases(
     run_benchmark: Callable[..., Awaitable[None]],
+    suite: str = "routing",
 ) -> None:
+    if suite == "routing":
+        func = _run_case
+    else:
+        func = _run_lookup_case
+
     await gather(
         *(
             run_benchmark(
-                partial(_run_case, method, path),
+                partial(func, method, path),
                 path,
             )
             for method, path in get_cases()

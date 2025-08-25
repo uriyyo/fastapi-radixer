@@ -1,10 +1,12 @@
 import time
 from dataclasses import dataclass
 from functools import partial
-from typing import Callable, Any, Awaitable
+from typing import Callable, Any, Awaitable, Literal, Annotated
 
+import click
 from fastapi import FastAPI
 from starlette.types import ASGIApp
+from typer import Option
 
 from .apps import get_regular_app, get_radixer_app, get_radixer_fast_app
 from .routes import run_cases, BenchmarkFunc
@@ -43,6 +45,9 @@ async def run_benchmark[**P, R](
     return result
 
 
+type BenchmarkSuite = Literal["routing", "lookup"]
+
+
 def benchmark_factory(
     results: list[BenchmarkResult],
     group: str,
@@ -62,22 +67,35 @@ async def run_app(
     *,
     cycles: int | None = None,
     iterations: int | None = None,
+    suite: BenchmarkSuite | None = None,
 ) -> list[BenchmarkResult]:
     if iterations is None:
         iterations = 100
     if cycles is None:
         cycles = 10
+    if suite is None:
+        suite = "routing"
+
+    try:
+        arg = app.router if suite == "routing" else app.router.routing_table
+    except AttributeError:
+        return []
 
     results: list[BenchmarkResult] = []
 
     for _ in range(cycles):
         for _ in range(iterations):
-            await run_cases(benchmark_factory(results, group, app.router))
+            await run_cases(benchmark_factory(results, group, arg), suite)
 
     return results
 
 
-async def run_benchmarks() -> None:
+async def run_benchmarks(
+    *,
+    requests: int | None = None,
+    cycles: int | None = None,
+    suite: BenchmarkSuite | None = None,
+) -> None:
     init_cases()
 
     regular_app = get_regular_app()
@@ -89,17 +107,57 @@ async def run_benchmarks() -> None:
     await run_app("radixer", radixer_app, iterations=10, cycles=1)
     await run_app("radixer-fast", radixer_fast_app, iterations=10, cycles=1)
 
-    regular_results = await run_app("regular", regular_app)
-    radixer_results = await run_app("radixer", radixer_app)
-    radixer_fast_results = await run_app("radixer-fast", radixer_fast_app)
+    regular_results = await run_app(
+        "regular",
+        regular_app,
+        cycles=cycles,
+        iterations=requests,
+        suite=suite,
+    )
+    radixer_results = await run_app(
+        "radixer",
+        radixer_app,
+        cycles=cycles,
+        iterations=requests,
+        suite=suite,
+    )
+    radixer_fast_results = await run_app(
+        "radixer-fast",
+        radixer_fast_app,
+        cycles=cycles,
+        iterations=requests,
+        suite=suite,
+    )
 
     show_results(regular_results, radixer_results, radixer_fast_results)
 
 
-if __name__ == "__main__":
+def main(
+    *,
+    requests: int | None = None,
+    cycles: int | None = None,
+    suite: Annotated[
+        BenchmarkSuite | None,
+        Option(
+            click_type=click.Choice(["routing", "lookup"]),
+        ),
+    ] = None,
+):
     try:
         import uvloop as _runner
     except ImportError:
         import asyncio as _runner
 
-    _runner.run(run_benchmarks())
+    _runner.run(
+        run_benchmarks(
+            requests=requests,
+            cycles=cycles,
+            suite=suite,
+        )
+    )
+
+
+if __name__ == "__main__":
+    import typer
+
+    typer.run(main)

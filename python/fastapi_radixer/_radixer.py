@@ -15,9 +15,7 @@ from .types import Method
 
 def _get_default_routing_table() -> RadixerRoutingTable:
     try:
-        from fastapi_radixer._fast_routing_table import (  # noqa: PLC0415
-            FastRoutingTable,  # type: ignore[unresolved-import]
-        )
+        from fastapi_radixer._fast_routing_table import FastRoutingTable  # type: ignore[import]  # noqa: PLC0415
 
         return FastRoutingTable()
     except ImportError:
