@@ -1,6 +1,4 @@
-use crate::types::{
-    Methods, ParamParseResult, ParamRouteDecl, ParamType, RouteDecl, StaticRouteDecl,
-};
+use crate::types::{Methods, ParamParseResult, ParamRouteDecl, ParamType, PathPart, RouteDecl, StaticRouteDecl};
 use pyo3::{pyclass, pymethods, PyObject, PyResult, Python, exceptions::PyRuntimeError};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use pyo3::types::PyString;
@@ -30,7 +28,7 @@ impl RoutingTrie {
         self.radix_node.is_some()
     }
 
-    fn add_route(&mut self, route: ParamRouteDecl, parts: &[crate::types::PathPart]) {
+    fn add_route(&mut self, route: ParamRouteDecl, parts: &[PathPart]) {
         self.methods.extend(route.methods.iter().cloned());
 
         if parts.is_empty() {
@@ -41,7 +39,7 @@ impl RoutingTrie {
         let (part, rest) = parts.split_first().unwrap();
 
         match part {
-            crate::types::PathPart::Static { path, .. } => {
+            PathPart::Static { path, .. } => {
                 let child = self
                     .static_parts
                     .entry(path.clone())
@@ -49,7 +47,7 @@ impl RoutingTrie {
 
                 child.add_route(route, rest);
             }
-            crate::types::PathPart::Param {
+            PathPart::Param {
                 name: _,
                 param_type,
             } => {
@@ -92,6 +90,7 @@ impl RoutingTrie {
                     combined_path.push_str(&path);
                     combined_path.push('/');
                     combined_path.push_str(&sub_path);
+
                     self.radix_node = Some((combined_path, sub_trie));
                 } else {
                     self.radix_node = Some((path, Box::new(trie)));
@@ -103,7 +102,7 @@ impl RoutingTrie {
         ()
     }
 
-    fn lookup(&self, method: &str, path: &str) -> Option<(&ParamRouteDecl, Vec<ParamParseResult>)> {
+    fn lookup(&self, method: &str, path: &str) -> Option<(&ParamRouteDecl, Option<Vec<ParamParseResult>>)> {
         if !self.methods.contains(method) {
             return None;
         }
@@ -111,7 +110,7 @@ impl RoutingTrie {
         if path.is_empty() {
             for leaf in &self.leafs {
                 if leaf.methods.contains(method) {
-                    return Some((leaf, Vec::new()));
+                    return Some((leaf, None));
                 }
             }
         }
@@ -140,9 +139,10 @@ impl RoutingTrie {
                 None => continue,
             };
 
-            if let Some((decl, mut args)) = child.lookup(method, rest) {
+            if let Some((decl, args)) = child.lookup(method, rest) {
+                let mut args = args.unwrap_or_else(|| Vec::with_capacity(decl.params.len()));
                 args.insert(0, parsed);
-                return Some((decl, args));
+                return Some((decl, Some(args)));
             }
         }
 
@@ -231,7 +231,7 @@ impl FastRoutingTable {
         &self,
         method: &str,
         path: &str,
-    ) -> PyResult<Option<(&PyObject, HashMap<&String, ParamParseResult>)>> {
+    ) -> PyResult<Option<(&PyObject, HashMap<&str, ParamParseResult>)>> {
         if let Some(static_routes) = self.static_routes.get(path) {
             for (_, route) in static_routes {
                 if route.methods.contains(method) {
@@ -241,11 +241,16 @@ impl FastRoutingTable {
         }
 
         if let Some((decl, args)) = self.trie.lookup(method, path) {
-            // Optimized: use with_capacity to pre-allocate HashMap
-            let mut params = HashMap::with_capacity(decl.params.len());
-            for (param, arg) in decl.params.iter().zip(args) {
-                params.insert(param, arg);
-            }
+            let params: HashMap<&str, ParamParseResult> = match args {
+                Some(args) => {
+                    decl.params
+                        .iter()
+                        .map(|s| s.as_str())
+                        .zip(args.into_iter())
+                        .collect()
+                },
+                None => HashMap::new(),
+            };
 
             return Ok(Some((&decl.route, params)));
         }
