@@ -225,7 +225,16 @@ impl FastRoutingTable {
         match route {
             RouteDecl::Static(static_route) => self.add_static_route(static_route),
             RouteDecl::Param(param_route) => self.add_param_route(param_route),
+    pub fn add_route(&mut self, route: RouteDecl) -> PyResult<()> {
+        if self.prepared {
+            return Err(PyRuntimeError::new_err("Cannot add routes after prepare() has been called"));
         }
+
+        match route {
+            RouteDecl::Static(static_route) => self.add_static_route(static_route),
+            RouteDecl::Param(param_route) => self.add_param_route(param_route),
+        }
+        Ok(())
     }
 
     pub fn lookup(
