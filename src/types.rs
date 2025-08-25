@@ -51,7 +51,7 @@ impl<'py> IntoPyObject<'py> for ParamParseResult {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ParamType {
     UUID,
     Int,
@@ -82,13 +82,13 @@ impl ParamType {
             ParamType::Int => value.parse::<i64>().map(ParamParseResult::Int).ok(),
             ParamType::Float => value.parse::<f64>().map(ParamParseResult::Float).ok(),
             ParamType::Str => {
-                if value.contains("/") {
+                if value.contains('/') {
                     None
                 } else {
-                    Some(ParamParseResult::Str(value.to_string()))
+                    Some(ParamParseResult::Str(value.to_owned()))
                 }
             }
-            ParamType::Path => Some(ParamParseResult::Path(value.to_string())),
+            ParamType::Path => Some(ParamParseResult::Path(value.to_owned())),
         }
     }
 }

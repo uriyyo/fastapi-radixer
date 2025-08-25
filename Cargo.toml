@@ -20,6 +20,3 @@ strip = "debuginfo"
 
 [profile.dev]
 opt-level = 1
-
-[build-system]
-build-backend = "maturin"

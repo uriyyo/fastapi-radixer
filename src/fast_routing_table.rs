@@ -2,7 +2,7 @@ use crate::types::{
     Methods, ParamParseResult, ParamRouteDecl, ParamType, RouteDecl, StaticRouteDecl,
 };
 use pyo3::{pyclass, pymethods, PyObject, PyResult, Python, exceptions::PyRuntimeError};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use pyo3::types::PyString;
 
 struct RoutingTrie {
@@ -18,9 +18,9 @@ struct RoutingTrie {
 impl RoutingTrie {
     fn new() -> Self {
         RoutingTrie {
-            methods: Methods::new(),
+            methods: HashSet::with_capacity(4), // Common: GET, POST, PUT, DELETE
             leafs: Vec::new(),
-            static_parts: HashMap::new(),
+            static_parts: HashMap::with_capacity(2), // Most nodes have 1-2 children
             param_parts: BTreeMap::new(),
             radix_node: None,
         }
@@ -30,8 +30,8 @@ impl RoutingTrie {
         self.radix_node.is_some()
     }
 
-    fn add_route(&mut self, route: ParamRouteDecl, parts: Vec<crate::types::PathPart>) {
-        self.methods.extend(route.methods.clone());
+    fn add_route(&mut self, route: ParamRouteDecl, parts: &[crate::types::PathPart]) {
+        self.methods.extend(route.methods.iter().cloned());
 
         if parts.is_empty() {
             self.leafs.push(route);
@@ -47,7 +47,7 @@ impl RoutingTrie {
                     .entry(path.clone())
                     .or_insert_with(|| RoutingTrie::new());
 
-                child.add_route(route, rest.to_vec());
+                child.add_route(route, rest);
             }
             crate::types::PathPart::Param {
                 name: _,
@@ -55,10 +55,10 @@ impl RoutingTrie {
             } => {
                 let child = self
                     .param_parts
-                    .entry(param_type.clone())
+                    .entry(*param_type)
                     .or_insert_with(|| RoutingTrie::new());
 
-                child.add_route(route, rest.to_vec());
+                child.add_route(route, rest);
             }
         }
     }
@@ -123,8 +123,8 @@ impl RoutingTrie {
             }
         }
 
-        let (part, rest) = match path.find("/") {
-            Some(index) => (&path[..index], &path[index + 1..]),
+        let (part, rest) = match path.split_once('/') {
+            Some((part, rest)) => (part, rest),
             None => (path, ""),
         };
 
@@ -184,14 +184,14 @@ impl FastRoutingTable {
         let entry = self
             .static_routes
             .entry(route.path.clone())
-            .or_insert_with(Vec::new);
+            .or_insert_with(|| Vec::with_capacity(4)); // Most paths have few methods
 
         entry.push((route.methods.clone(), route));
     }
 
     fn add_param_route(&mut self, route: ParamRouteDecl) {
         let parts = route.parts.clone();
-        self.trie.add_route(route, parts);
+        self.trie.add_route(route, &parts);
     }
 }
 
@@ -201,7 +201,7 @@ impl FastRoutingTable {
     pub fn new() -> Self {
         FastRoutingTable {
             trie: RoutingTrie::new(),
-            static_routes: HashMap::new(),
+            static_routes: HashMap::with_capacity(16), // Pre-allocate for common static routes
             prepared: false,
         }
     }
