@@ -40,10 +40,8 @@ impl<'py> IntoPyObject<'py> for ParamParseResult {
     fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
         match self {
             ParamParseResult::UUID(uuid) => {
-                let uuid_module = py.import("uuid")?;
-                let uuid_class = uuid_module.getattr("UUID")?;
-
-                Ok(uuid_class.call1((uuid.to_string(),))?.into())
+                // Optimize: Return string representation directly instead of creating UUID object
+                Ok(uuid.to_string().into_pyobject(py)?.into_any())
             }
             ParamParseResult::Int(int) => Ok(int.into_pyobject(py)?.into_any()),
             ParamParseResult::Float(float) => Ok(float.into_pyobject(py)?.into_any()),

@@ -1,7 +1,7 @@
 use crate::types::{
     Methods, ParamParseResult, ParamRouteDecl, ParamType, RouteDecl, StaticRouteDecl,
 };
-use pyo3::{pyclass, pymethods, PyObject, PyResult, Python};
+use pyo3::{pyclass, pymethods, PyObject, PyResult, Python, exceptions::PyRuntimeError};
 use std::collections::{BTreeMap, HashMap};
 use pyo3::types::PyString;
 
@@ -117,7 +117,7 @@ impl RoutingTrie {
         }
 
         if let Some((single_path, single_trie)) = &self.radix_node {
-            if path.starts_with(single_path) {
+            if path.starts_with(single_path) && path.len() > single_path.len() {
                 let remaining_path = &path[single_path.len() + 1..];
                 return single_trie.lookup(method, remaining_path);
             }
@@ -140,11 +140,9 @@ impl RoutingTrie {
                 None => continue,
             };
 
-            if let Some((decl, args)) = child.lookup(method, rest) {
-                let mut new_args = args.clone();
-                new_args.insert(0, parsed);
-
-                return Some((decl, new_args));
+            if let Some((decl, mut args)) = child.lookup(method, rest) {
+                args.insert(0, parsed);
+                return Some((decl, args));
             }
         }
 
@@ -217,14 +215,6 @@ impl FastRoutingTable {
         self.prepared = true;
     }
 
-    pub fn add_route(&mut self, route: RouteDecl) {
-        if self.prepared {
-            panic!("Cannot add routes after prepare() has been called");
-        }
-
-        match route {
-            RouteDecl::Static(static_route) => self.add_static_route(static_route),
-            RouteDecl::Param(param_route) => self.add_param_route(param_route),
     pub fn add_route(&mut self, route: RouteDecl) -> PyResult<()> {
         if self.prepared {
             return Err(PyRuntimeError::new_err("Cannot add routes after prepare() has been called"));
@@ -251,7 +241,11 @@ impl FastRoutingTable {
         }
 
         if let Some((decl, args)) = self.trie.lookup(method, path) {
-            let params = decl.params.iter().zip(args.into_iter()).collect();
+            // Optimized: use with_capacity to pre-allocate HashMap
+            let mut params = HashMap::with_capacity(decl.params.len());
+            for (param, arg) in decl.params.iter().zip(args) {
+                params.insert(param, arg);
+            }
 
             return Ok(Some((&decl.route, params)));
         }
