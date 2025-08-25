@@ -9,4 +9,15 @@ name = "fastapi_radixer"
 crate-type = ["cdylib"]
 
 [dependencies]
-pyo3 = "0.25.0"
+pyo3 = { version = "0.25.1", features = ["extension-module"] }
+uuid = { version = "1.7.0", features = ["v4"] }
+rustc-hash = "2.1.1"
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = "debuginfo"
+
+[profile.dev]
+opt-level = 1
