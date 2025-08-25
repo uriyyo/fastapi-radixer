@@ -1,6 +1,7 @@
 use crate::types::{Methods, ParamParseResult, ParamRouteDecl, ParamType, PathPart, RouteDecl, StaticRouteDecl};
 use pyo3::{pyclass, pymethods, PyObject, PyResult, Python, exceptions::PyRuntimeError};
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::sync::Arc;
 use pyo3::types::PyString;
 
 struct RoutingTrie {
@@ -175,18 +176,18 @@ impl RoutingTrie {
 #[pyclass]
 pub struct FastRoutingTable {
     trie: RoutingTrie,
-    static_routes: HashMap<String, Vec<(Methods, StaticRouteDecl)>>,
+    static_routes: HashMap<(String, String), Arc<StaticRouteDecl>>,
     prepared: bool,
 }
 
 impl FastRoutingTable {
     fn add_static_route(&mut self, route: StaticRouteDecl) {
-        let entry = self
-            .static_routes
-            .entry(route.path.clone())
-            .or_insert_with(|| Vec::with_capacity(4)); // Most paths have few methods
+        let route_rc = Arc::new(route);
 
-        entry.push((route.methods.clone(), route));
+        for method in &route_rc.methods {
+            let key = (route_rc.path.clone(), method.clone());
+            self.static_routes.insert(key, route_rc.clone());
+        }
     }
 
     fn add_param_route(&mut self, route: ParamRouteDecl) {
@@ -232,12 +233,9 @@ impl FastRoutingTable {
         method: &str,
         path: &str,
     ) -> PyResult<Option<(&PyObject, HashMap<&str, ParamParseResult>)>> {
-        if let Some(static_routes) = self.static_routes.get(path) {
-            for (_, route) in static_routes {
-                if route.methods.contains(method) {
-                    return Ok(Some((&route.route, HashMap::new())));
-                }
-            }
+        let key = (path.to_string(), method.to_string());
+        if let Some(route) = self.static_routes.get(&key) {
+            return Ok(Some((&route.route, HashMap::new())));
         }
 
         if let Some((decl, args)) = self.trie.lookup(method, path) {
@@ -260,8 +258,11 @@ impl FastRoutingTable {
 
     pub fn dump(&self, tree: PyObject) -> PyResult<()> {
         Python::with_gil(|py| -> PyResult<()> {
-            for (path, _) in &self.static_routes {
-                tree.call_method1(py, "add", (PyString::new(py, path),))?;
+            let mut seen_paths = HashSet::new();
+            for ((path, _), _) in &self.static_routes {
+                if seen_paths.insert(path) {
+                    tree.call_method1(py, "add", (PyString::new(py, path),))?;
+                }
             }
 
             self.trie.dump(py, &tree)?;
