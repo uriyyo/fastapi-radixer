@@ -177,7 +177,7 @@ impl RoutingTrie {
 #[pyclass]
 pub struct FastRoutingTable {
     trie: RoutingTrie,
-    static_routes: FxHashMap<(String, String), Arc<StaticRouteDecl>>,
+    static_routes: FxHashMap<String, FxHashMap<String, Arc<StaticRouteDecl>>>,
     prepared: bool,
 }
 
@@ -186,8 +186,10 @@ impl FastRoutingTable {
         let route_rc = Arc::new(route);
 
         for method in &route_rc.methods {
-            let key = (route_rc.path.clone(), method.clone());
-            self.static_routes.insert(key, route_rc.clone());
+            self.static_routes
+                .entry(route_rc.path.clone())
+                .or_insert_with(|| FxHashMap::with_capacity_and_hasher(4, Default::default()))
+                .insert(method.clone(), route_rc.clone());
         }
     }
 
@@ -234,9 +236,10 @@ impl FastRoutingTable {
         method: &str,
         path: &str,
     ) -> PyResult<Option<(&PyObject, FxHashMap<&str, ParamParseResult>)>> {
-        let key = (path.to_string(), method.to_string());
-        if let Some(route) = self.static_routes.get(&key) {
-            return Ok(Some((&route.route, FxHashMap::default())));
+        if let Some(methods) = self.static_routes.get(path) {
+            if let Some(route) = methods.get(method) {
+                return Ok(Some((&route.route, FxHashMap::default())));
+            }
         }
 
         if let Some((decl, args)) = self.trie.lookup(method, path) {
@@ -259,11 +262,8 @@ impl FastRoutingTable {
 
     pub fn dump(&self, tree: PyObject) -> PyResult<()> {
         Python::with_gil(|py| -> PyResult<()> {
-            let mut seen_paths = FxHashSet::default();
-            for ((path, _), _) in &self.static_routes {
-                if seen_paths.insert(path) {
-                    tree.call_method1(py, "add", (PyString::new(py, path),))?;
-                }
+            for path in self.static_routes.keys() {
+                tree.call_method1(py, "add", (PyString::new(py, path),))?;
             }
 
             self.trie.dump(py, &tree)?;
