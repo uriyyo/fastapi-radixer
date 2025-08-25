@@ -3,10 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-import rich
 from rich.tree import Tree
 from starlette.routing import Route
 
+from ._base import RadixerRoutingTable
 from .parser import param_priority_key, parse_param_part
 from .types import (
     Method,
@@ -164,20 +164,17 @@ class RoutingTrie:
 
 
 @dataclass
-class RoutingTable:
+class RoutingTable(RadixerRoutingTable):
     route_trie: RoutingTrie = field(default_factory=RoutingTrie)
     static_routes: dict[tuple[str, Method], StaticRouteDecl] = field(default_factory=dict)
 
     trie_prepared: bool = False
 
-    def dump(self) -> None:
-        tree = Tree("/")
-
+    def dump(self, tree: Tree) -> None:
         for path, _ in self.static_routes:
             tree.add(path)
-        self.route_trie.dump(tree)
 
-        rich.print(tree)
+        self.route_trie.dump(tree)
 
     def prepare(self) -> None:
         if self.trie_prepared:

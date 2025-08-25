@@ -1,3 +1,4 @@
+from asyncio import gather
 from functools import partial
 from typing import Iterator, Callable, Any, Awaitable
 
@@ -76,8 +77,15 @@ async def _run_case(method: str, path: str, app: ASGIApp, benchmark: Any) -> Non
 async def run_cases(
     run_benchmark: Callable[..., Awaitable[None]],
 ) -> None:
-    for method, path in get_cases():
-        await run_benchmark(partial(_run_case, method, path), path)
+    await gather(
+        *(
+            run_benchmark(
+                partial(_run_case, method, path),
+                path,
+            )
+            for method, path in get_cases()
+        )
+    )
 
 
 __all__ = [

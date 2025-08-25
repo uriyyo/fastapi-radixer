@@ -1,6 +1,8 @@
 from typing import TYPE_CHECKING, Any, cast
 
+import rich
 from fastapi import APIRouter, FastAPI
+from rich.tree import Tree
 from starlette._utils import get_route_path
 from starlette.routing import BaseRoute, Route
 from starlette.types import Receive, Scope, Send
@@ -9,6 +11,17 @@ from ._base import RadixerRoutingTable
 from ._routing_table import RoutingTable
 from .parser import parse_route, prepare_path
 from .types import Method
+
+
+def _get_default_routing_table() -> RadixerRoutingTable:
+    try:
+        from fastapi_radixer._fast_routing_table import (  # noqa: PLC0415
+            FastRoutingTable,  # type: ignore[unresolved-import]
+        )
+
+        return FastRoutingTable()
+    except ImportError:
+        return RoutingTable()
 
 
 class Radixer(APIRouter):
@@ -25,7 +38,7 @@ class Radixer(APIRouter):
             **kwargs: Any,
         ) -> None:
             super().__init__(*args, **kwargs)
-            self.routing_table = routing_table or RoutingTable()
+            self.routing_table = routing_table or _get_default_routing_table()
             self.fallback = fallback
 
         def add_api_route(self, *args: Any, **kwargs: Any) -> None:
@@ -82,6 +95,12 @@ class Radixer(APIRouter):
         await route.handle(scope, receive, send)
 
         return
+
+    def dump_routing_table(self) -> None:
+        tree = Tree("/")
+        self.routing_table.dump(tree)
+
+        rich.print(tree)
 
 
 def init_app(

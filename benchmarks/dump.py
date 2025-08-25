@@ -37,11 +37,11 @@ def _get_median(times: list[float]) -> float:
 
 
 def _min(times: list[float]) -> float:
-    return max(times[:5])
+    return max(times[:20])
 
 
 def _max(times: list[float]) -> float:
-    return min(times[-5:])
+    return min(times[-20:])
 
 
 def benchmark_results_to_case_result(results: list[BenchmarkResult]) -> CaseResult:
@@ -89,11 +89,11 @@ def display_results(case: str | None, groups: set[str], results: dict[str, CaseR
     table = Table(title=f"Results for case: {case or 'all'}")
 
     table.add_column("Group")
-    table.add_column("Min (ms)", justify="right")
-    table.add_column("Max (ms)", justify="right")
-    table.add_column("Mean (ms)", justify="right")
-    table.add_column("Median (ms)", justify="right")
-    table.add_column("Total (ms)", justify="right")
+    table.add_column("Min (µs)", justify="right")
+    table.add_column("Max (µs)", justify="right")
+    table.add_column("Mean (µs)", justify="right")
+    table.add_column("Median (µs)", justify="right")
+    table.add_column("Total (µs)", justify="right")
 
     best_min = min((r.min for r in results.values()), default=0)
     best_max = min((r.max for r in results.values()), default=0)
