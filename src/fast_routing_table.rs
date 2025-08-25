@@ -1,7 +1,7 @@
 use crate::types::{Methods, ParamParseResult, ParamRouteDecl, ParamType, PathPart, RouteDecl, StaticRouteDecl};
 use pyo3::{pyclass, pymethods, PyObject, PyResult, Python, exceptions::PyRuntimeError};
 use rustc_hash::{FxHashMap, FxHashSet};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 use std::sync::Arc;
 use pyo3::types::PyString;
 
@@ -104,37 +104,44 @@ impl RoutingTrie {
         ()
     }
 
-    fn lookup(&self, method: &str, path: &str) -> Option<(&ParamRouteDecl, Option<Vec<ParamParseResult>>)> {
+    fn lookup(&self, method: &str, path: &str) -> Option<(&ParamRouteDecl, Option<VecDeque<ParamParseResult>>)> {
+        // Check if we have any methods at all for this subtree
         if !self.methods.contains(method) {
             return None;
         }
 
+        // Handle leaf nodes (end of path)
         if path.is_empty() {
             for leaf in &self.leafs {
                 if leaf.methods.contains(method) {
                     return Some((leaf, None));
                 }
             }
+            return None;
         }
 
+        // Handle radix-compressed paths
         if let Some((single_path, single_trie)) = &self.radix_node {
-            if path.starts_with(single_path) && path.len() > single_path.len() {
+            if path.starts_with(single_path){
                 let remaining_path = &path[single_path.len() + 1..];
                 return single_trie.lookup(method, remaining_path);
             }
         }
 
+        // Split path for regular trie traversal
         let (part, rest) = match path.split_once('/') {
             Some((part, rest)) => (part, rest),
             None => (path, ""),
         };
 
+        // Try static routes first (faster)
         if let Some(child) = self.static_parts.get(part) {
             if let Some(res) = child.lookup(method, rest) {
                 return Some(res);
             }
         }
 
+        // Try parameter routes
         for (param_type, child) in &self.param_parts {
             let parsed = match param_type.parse(part) {
                 Some(parsed) => parsed,
@@ -142,8 +149,8 @@ impl RoutingTrie {
             };
 
             if let Some((decl, args)) = child.lookup(method, rest) {
-                let mut args = args.unwrap_or_else(|| Vec::with_capacity(decl.params.len()));
-                args.insert(0, parsed);
+                let mut args = args.unwrap_or_else(|| VecDeque::with_capacity(decl.params.len()));
+                args.push_front(parsed);
                 return Some((decl, Some(args)));
             }
         }
@@ -205,7 +212,7 @@ impl FastRoutingTable {
     pub fn new() -> Self {
         FastRoutingTable {
             trie: RoutingTrie::new(),
-            static_routes: FxHashMap::with_capacity_and_hasher(16, Default::default()), // Pre-allocate for common static routes
+            static_routes: FxHashMap::with_capacity_and_hasher(16, Default::default()),
             prepared: false,
         }
     }
@@ -236,12 +243,14 @@ impl FastRoutingTable {
         method: &str,
         path: &str,
     ) -> PyResult<Option<(&PyObject, FxHashMap<&str, ParamParseResult>)>> {
+        // Fast path for static routes using original nested approach
         if let Some(methods) = self.static_routes.get(path) {
             if let Some(route) = methods.get(method) {
                 return Ok(Some((&route.route, FxHashMap::default())));
             }
         }
 
+        // Parameterized routes via trie
         if let Some((decl, args)) = self.trie.lookup(method, path) {
             let params: FxHashMap<&str, ParamParseResult> = match args {
                 Some(args) => {
